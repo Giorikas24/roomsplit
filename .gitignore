@@ -7,3 +7,4 @@ build/
 .DS_Store
 *.log
 server/src/generated/
+cookies.txt
