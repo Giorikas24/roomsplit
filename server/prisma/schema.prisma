@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+
+  memberships       GroupMember[]
+  expensesPaid      Expense[]              @relation("ExpensePaidBy")
+  shares            ExpenseShare[]
+  settlementsSent   Settlement[]           @relation("SettlementFrom")
+  settlementsGot    Settlement[]           @relation("SettlementTo")
+  recurringDefaults RecurringParticipant[]
+  recurringPaidBy   RecurringRule[]        @relation("RecurringPaidBy")
+}
+
+model Group {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  members     GroupMember[]
+  expenses    Expense[]
+  settlements Settlement[]
+  invites     Invite[]
+  recurring   RecurringRule[]
+}
+
+model GroupMember {
+  id       String    @id @default(cuid())
+  groupId  String
+  userId   String
+  role     Role      @default(MEMBER)
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+model Invite {
+  id        String    @id @default(cuid())
+  groupId   String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id              String   @id @default(cuid())
+  groupId         String
+  description     String
+  amountCents     Int
+  date            DateTime @db.Date
+  paidById        String
+  isPending       Boolean  @default(false)
+  recurringRuleId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  group  Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidBy User           @relation("ExpensePaidBy", fields: [paidById], references: [id])
+  rule   RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+  shares ExpenseShare[]
+
+  @@index([groupId, date])
+}
+
+model ExpenseShare {
+  id          String @id @default(cuid())
+  expenseId   String
+  userId      String
+  amountCents Int
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([expenseId, userId])
+  @@index([userId])
+}
+
+model RecurringRule {
+  id              String    @id @default(cuid())
+  groupId         String
+  description     String
+  amountCents     Int?
+  dayOfMonth      Int
+  paidById        String
+  active          Boolean   @default(true)
+  lastGeneratedAt DateTime? @db.Date
+  createdAt       DateTime  @default(now())
+
+  group        Group                  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidBy       User                   @relation("RecurringPaidBy", fields: [paidById], references: [id])
+  participants RecurringParticipant[]
+  expenses     Expense[]
+
+  @@index([groupId, active])
+}
+
+model RecurringParticipant {
+  id     String @id @default(cuid())
+  ruleId String
+  userId String
+
+  rule RecurringRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id])
+
+  @@unique([ruleId, userId])
+}
+
+model Settlement {
+  id          String   @id @default(cuid())
+  groupId     String
+  fromUserId  String
+  toUserId    String
+  amountCents Int
+  settledAt   DateTime @default(now())
+  note        String?
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  from  User  @relation("SettlementFrom", fields: [fromUserId], references: [id])
+  to    User  @relation("SettlementTo", fields: [toUserId], references: [id])
+
+  @@index([groupId, settledAt])
+}
