@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { requireMember } from "../middleware/requireMember.js";
 import expensesRouter from "./expenses.js";
 import balancesRouter from "./balances.js";
+import settlementsRouter from "./settlements.js";
 
 const router = express.Router();
 
@@ -15,6 +16,7 @@ router.use(requireAuth);
 // μέλους, οπότε δεν χρειάζεται να τον επαναλάβουμε μέσα.
 router.use("/:groupId/expenses", requireMember, expensesRouter);
 router.use("/:groupId/balances", requireMember, balancesRouter);
+router.use("/:groupId/settlements", requireMember, settlementsRouter);
 
 // Πόσο ζει μια πρόσκληση, σε χιλιοστά του δευτερολέπτου.
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
