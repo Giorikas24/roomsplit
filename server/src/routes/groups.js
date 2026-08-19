@@ -4,10 +4,15 @@ import { prisma } from "../lib/prisma.js";
 import { createGroupSchema } from "../schemas/group.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireMember } from "../middleware/requireMember.js";
+import expensesRouter from "./expenses.js";
 
 const router = express.Router();
 
 router.use(requireAuth);
+
+// Ολα τα expenses endpoints περνάνε πρώτα από τον έλεγχο
+// μέλους, οπότε δεν χρειάζεται να τον επαναλάβουμε μέσα.
+router.use("/:groupId/expenses", requireMember, expensesRouter);
 
 // Πόσο ζει μια πρόσκληση, σε χιλιοστά του δευτερολέπτου.
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
