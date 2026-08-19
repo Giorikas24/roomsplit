@@ -2,6 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { prisma } from "./lib/prisma.js";
 import authRouter from "./routes/auth.js";
+import groupsRouter from "./routes/groups.js";
 
 export function createApp() {
   const app = express();
@@ -28,6 +29,7 @@ export function createApp() {
   // Όλες οι διαδρομές του authRouter κρεμάνε κάτω από αυτό
   // το πρόθεμα. Το /register γίνεται /api/auth/register.
   app.use("/api/auth", authRouter);
+  app.use("/api/groups", groupsRouter);
 
   // Τελευταίο middleware, με τέσσερα ορίσματα. Ο express
   // αναγνωρίζει από τον αριθμό των ορισμάτων ότι αυτό είναι
