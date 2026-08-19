@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import express from "express";
 import { prisma } from "../lib/prisma.js";
 import { createGroupSchema } from "../schemas/group.js";
@@ -6,10 +7,10 @@ import { requireMember } from "../middleware/requireMember.js";
 
 const router = express.Router();
 
-// Εφαρμόζεται σε κάθε διαδρομή αυτού του router.
-// Δεν υπάρχει endpoint για groups που να μη θέλει login,
-// οπότε το δηλώνουμε μία φορά εδώ αντί για κάθε γραμμή.
 router.use(requireAuth);
+
+// Πόσο ζει μια πρόσκληση, σε χιλιοστά του δευτερολέπτου.
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 router.post("/", async (req, res) => {
   const parsed = createGroupSchema.safeParse(req.body);
@@ -21,9 +22,6 @@ router.post("/", async (req, res) => {
     });
   }
 
-  // Nested create: φτιάχνει group και membership μαζί.
-  // Το Prisma τα τυλίγει σε ένα transaction, οπότε είναι
-  // αδύνατο να μείνει group χωρίς κανένα μέλος.
   const group = await prisma.group.create({
     data: {
       name: parsed.data.name,
@@ -38,9 +36,6 @@ router.post("/", async (req, res) => {
 });
 
 router.get("/", async (req, res) => {
-  // Ξεκινάμε από τα memberships και όχι από τα groups,
-  // γιατί έτσι το φιλτράρισμα ανά χρήστη γίνεται στη βάση
-  // και δεν φέρνουμε ποτέ ξένα δεδομένα στη μνήμη.
   const memberships = await prisma.groupMember.findMany({
     where: { userId: req.userId, leftAt: null },
     select: {
@@ -51,7 +46,6 @@ router.get("/", async (req, res) => {
           id: true,
           name: true,
           createdAt: true,
-          // Μετράει μέλη χωρίς να τα φέρει όλα.
           _count: { select: { members: true } },
         },
       },
@@ -59,8 +53,6 @@ router.get("/", async (req, res) => {
     orderBy: { joinedAt: "asc" },
   });
 
-  // Ισοπεδώνουμε τη δομή, ώστε ο client να παίρνει λίστα
-  // από groups και όχι λίστα από memberships.
   const groups = memberships.map((m) => ({
     id: m.group.id,
     name: m.group.name,
@@ -72,6 +64,79 @@ router.get("/", async (req, res) => {
   return res.json({ groups });
 });
 
+// Οι διαδρομές /join μπαίνουν πριν από την /:groupId.
+// Δεν συγκρούονται, γιατί έχουν διαφορετικό αριθμό
+// τμημάτων, αλλά η σειρά κάνει τον κώδικα πιο ξεκάθαρο.
+router.get("/join/:token", async (req, res) => {
+  const invite = await prisma.invite.findUnique({
+    where: { token: req.params.token },
+    select: {
+      expiresAt: true,
+      usedAt: true,
+      group: { select: { id: true, name: true } },
+    },
+  });
+
+  // Ίδια απάντηση για ανύπαρκτη, χρησιμοποιημένη και
+  // ληγμένη πρόσκληση. Δεν δίνουμε πληροφορία σε κάποιον
+  // που δοκιμάζει τυχαία tokens.
+  if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
+    return res.status(404).json({ error: "invite_invalid" });
+  }
+
+  // Μόνο το όνομα του σπιτιού, τίποτα άλλο. Αυτός που
+  // βλέπει την πρόσκληση δεν είναι ακόμα μέλος.
+  return res.json({ group: invite.group });
+});
+
+router.post("/join/:token", async (req, res) => {
+  const invite = await prisma.invite.findUnique({
+    where: { token: req.params.token },
+  });
+
+  if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
+    return res.status(404).json({ error: "invite_invalid" });
+  }
+
+  const existing = await prisma.groupMember.findUnique({
+    where: {
+      groupId_userId: { groupId: invite.groupId, userId: req.userId },
+    },
+  });
+
+  if (existing && !existing.leftAt) {
+    return res.status(409).json({ error: "already_member" });
+  }
+
+  // Το transaction εγγυάται ότι είτε γίνονται και τα δύο,
+  // είτε κανένα. Χωρίς αυτό, μια αποτυχία στη μέση θα
+  // άφηνε πρόσκληση καμένη χωρίς να έχει μπει ο χρήστης.
+  await prisma.$transaction([
+    existing
+      ? // Επιστροφή παλιού συγκατοίκου: καθαρίζουμε το leftAt
+        // αντί να φτιάξουμε δεύτερη εγγραφή, ώστε να μη
+        // σπάσει το ιστορικό των εξόδων του.
+        prisma.groupMember.update({
+          where: { id: existing.id },
+          data: { leftAt: null, joinedAt: new Date() },
+        })
+      : prisma.groupMember.create({
+          data: { groupId: invite.groupId, userId: req.userId },
+        }),
+    prisma.invite.update({
+      where: { id: invite.id },
+      data: { usedAt: new Date() },
+    }),
+  ]);
+
+  const group = await prisma.group.findUnique({
+    where: { id: invite.groupId },
+    select: { id: true, name: true, createdAt: true },
+  });
+
+  return res.status(201).json({ group });
+});
+
 router.get("/:groupId", requireMember, async (req, res) => {
   const group = await prisma.group.findUnique({
     where: { id: req.params.groupId },
@@ -80,7 +145,6 @@ router.get("/:groupId", requireMember, async (req, res) => {
       name: true,
       createdAt: true,
       members: {
-        // Δεν δείχνουμε όσους έχουν φύγει.
         where: { leftAt: null },
         select: {
           role: true,
@@ -108,6 +172,22 @@ router.get("/:groupId", requireMember, async (req, res) => {
       members,
     },
   });
+});
+
+router.post("/:groupId/invites", requireMember, async (req, res) => {
+  const invite = await prisma.invite.create({
+    data: {
+      groupId: req.params.groupId,
+      // 32 τυχαία bytes. Το base64url δίνει κείμενο που
+      // μπαίνει σε URL χωρίς να χρειάζεται μετατροπή,
+      // δηλαδή χωρίς +, / και =.
+      token: crypto.randomBytes(32).toString("base64url"),
+      expiresAt: new Date(Date.now() + INVITE_TTL_MS),
+    },
+    select: { token: true, expiresAt: true },
+  });
+
+  return res.status(201).json({ invite });
 });
 
 export default router;
