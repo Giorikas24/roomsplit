@@ -5,6 +5,7 @@ import { formatEuro, formatDate } from "../lib/format.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import ExpenseForm from "../components/ExpenseForm.jsx";
 import Balances from "../components/Balances.jsx";
+import RecurringSection from "../components/RecurringSection.jsx";
 
 export default function GroupDetail() {
   const { groupId } = useParams();
@@ -119,6 +120,12 @@ export default function GroupDetail() {
           </li>
         ))}
       </ul>
+            <RecurringSection
+        groupId={groupId}
+        members={group.members}
+        currentUserId={user.id}
+        onChanged={load}
+      />
     </div>
   );
 }
