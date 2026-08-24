@@ -187,3 +187,21 @@ legend {
 .checkbox input {
   width: auto;
 }
+
+.positive {
+  color: #15803d;
+  font-size: 0.9rem;
+}
+
+.negative {
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.card button {
+  margin-top: 0.5rem;
+  align-self: flex-start;
+  width: auto;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
+}
