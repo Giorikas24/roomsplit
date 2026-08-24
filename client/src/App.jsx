@@ -4,6 +4,7 @@ import RequireAuth from "./components/RequireAuth.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Groups from "./pages/Groups.jsx";
+import GroupDetail from "./pages/GroupDetail.jsx";
 
 export default function App() {
   return (
@@ -21,6 +22,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <Groups />
+              </RequireAuth>
+            }
+          />
+            <Route
+            path="/groups/:groupId"
+            element={
+              <RequireAuth>
+                <GroupDetail />
               </RequireAuth>
             }
           />

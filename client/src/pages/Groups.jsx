@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { Link } from "react-router-dom";
 
 export default function Groups() {
   const { user, logout } = useAuth();
@@ -92,12 +93,14 @@ export default function Groups() {
 
       <ul className="card-list">
         {groups.map((group) => (
-          <li key={group.id} className="card">
-            <strong>{group.name}</strong>
-            <span className="muted">
-              {group.memberCount} μέλη
-              {group.role === "OWNER" ? " · διαχειριστής" : ""}
-            </span>
+                    <li key={group.id}>
+            <Link to={`/groups/${group.id}`} className="card card-link">
+              <strong>{group.name}</strong>
+              <span className="muted">
+                {group.memberCount} μέλη
+                {group.role === "OWNER" ? " · διαχειριστής" : ""}
+              </span>
+            </Link>
           </li>
         ))}
       </ul>
