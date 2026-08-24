@@ -2,11 +2,17 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api.js";
 import { formatEuro, formatDate } from "../lib/format.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import ExpenseForm from "../components/ExpenseForm.jsx";
 
 export default function GroupDetail() {
   // Διαβάζει το :groupId από τη διεύθυνση. Το όνομα πρέπει
   // να ταιριάζει με αυτό που δηλώνουμε στο Route.
   const { groupId } = useParams();
+
+  // Χρειαζόμαστε το id του συνδεδεμένου χρήστη, ώστε η
+  // φόρμα να προεπιλέγει αυτόν ως πληρωτή.
+  const { user } = useAuth();
 
   const [group, setGroup] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -71,6 +77,16 @@ export default function GroupDetail() {
       </p>
 
       <h2>Έξοδα</h2>
+
+      {/* Το onCreated παίρνει τη συνάρτηση load, χωρίς
+          παρενθέσεις. Με παρενθέσεις θα εκτελούνταν σε
+          κάθε σχεδίαση και θα δημιουργούσε ατέρμονο κύκλο. */}
+      <ExpenseForm
+        groupId={groupId}
+        members={group.members}
+        currentUserId={user.id}
+        onCreated={load}
+      />
 
       {expenses.length === 0 && (
         <p className="muted">Δεν υπάρχουν έξοδα ακόμα.</p>
