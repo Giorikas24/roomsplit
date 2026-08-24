@@ -3,7 +3,7 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
-import Home from "./pages/Home.jsx";
+import Groups from "./pages/Groups.jsx";
 
 export default function App() {
   return (
@@ -20,7 +20,7 @@ export default function App() {
             path="/"
             element={
               <RequireAuth>
-                <Home />
+                <Groups />
               </RequireAuth>
             }
           />
