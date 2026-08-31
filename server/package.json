@@ -6,8 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js",
-    "postinstall": "prisma generate"
+    "start": "prisma migrate deploy && node src/index.js",
+    "postinstall": "prisma generate",
+    "build": "npm --prefix ../client ci --include=dev && npm --prefix ../client run build"
   },
   "keywords": [],
   "author": "",
@@ -23,8 +24,5 @@
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
     "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "prisma": "^7.9.1"
   }
 }
