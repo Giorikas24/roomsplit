@@ -1,16 +1,27 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
+import Layout from "./components/Layout.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import Groups from "./pages/Groups.jsx";
 import GroupDetail from "./pages/GroupDetail.jsx";
+import Join from "./pages/Join.jsx";
+
+// Οι προστατευμένες σελίδες χρειάζονται πάντα δύο
+// πράγματα: έλεγχο σύνδεσης και τη λωρίδα. Τα ενώνουμε
+// σε ένα βοηθητικό, ώστε κάθε Route να μένει μία γραμμή
+// και να μη μπορεί να ξεχαστεί το ένα από τα δύο.
+function Protected({ children }) {
+  return (
+    <RequireAuth>
+      <Layout>{children}</Layout>
+    </RequireAuth>
+  );
+}
 
 export default function App() {
   return (
-    // Ο BrowserRouter πρέπει να τυλίγει τα πάντα που
-    // χρησιμοποιούν navigation, και ο AuthProvider τα
-    // πάντα που χρειάζονται τον χρήστη.
     <BrowserRouter>
       <AuthProvider>
         <Routes>
@@ -20,23 +31,33 @@ export default function App() {
           <Route
             path="/"
             element={
-              <RequireAuth>
+              <Protected>
                 <Groups />
-              </RequireAuth>
+              </Protected>
             }
           />
-            <Route
+
+          <Route
             path="/groups/:groupId"
             element={
-              <RequireAuth>
+              <Protected>
                 <GroupDetail />
+              </Protected>
+            }
+          />
+
+          {/* Η πρόσκληση δεν παίρνει Layout. Είναι σελίδα
+              απόφασης, όχι πλοήγησης, οπότε κρατάμε την
+              οθόνη καθαρή από τη λωρίδα. */}
+          <Route
+            path="/join/:token"
+            element={
+              <RequireAuth>
+                <Join />
               </RequireAuth>
             }
           />
 
-          {/* Ο αστερίσκος πιάνει οτιδήποτε δεν ταίριαξε
-              παραπάνω, ώστε μια λάθος διεύθυνση να μην
-              εμφανίζει κενή σελίδα. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

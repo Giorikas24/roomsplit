@@ -3,9 +3,11 @@ import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api.js";
 import { formatEuro, formatDate } from "../lib/format.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import Avatar from "../components/Avatar.jsx";
 import ExpenseForm from "../components/ExpenseForm.jsx";
 import Balances from "../components/Balances.jsx";
 import RecurringSection from "../components/RecurringSection.jsx";
+import InviteBox from "../components/InviteBox.jsx";
 
 export default function GroupDetail() {
   const { groupId } = useParams();
@@ -18,10 +20,11 @@ export default function GroupDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [showForm, setShowForm] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+
   async function load() {
     try {
-      // Τέσσερα αιτήματα παράλληλα. Όλα εξαρτώνται από τα
-      // ίδια δεδομένα, οπότε ανανεώνονται πάντα μαζί.
       const [groupData, expensesData, balancesData, settleData] =
         await Promise.all([
           apiFetch(`/api/groups/${groupId}`),
@@ -38,8 +41,8 @@ export default function GroupDetail() {
     } catch (err) {
       setError(
         err.status === 404
-          ? "Το σπίτι δεν βρέθηκε ή δεν έχεις πρόσβαση."
-          : "Κάτι πήγε στραβά."
+          ? "Αυτό το σπίτι δεν υπάρχει ή δεν είσαι μέλος του."
+          : "Τα δεδομένα δεν φορτώθηκαν. Ανανέωσε τη σελίδα."
       );
     } finally {
       setLoading(false);
@@ -52,27 +55,74 @@ export default function GroupDetail() {
   }, [groupId]);
 
   if (loading) {
-    return <p className="page">Φόρτωση...</p>;
+    return <p className="muted">Φόρτωση...</p>;
   }
 
   if (error) {
     return (
-      <div className="page">
+      <>
         <p className="error">{error}</p>
         <Link to="/">Πίσω στα σπίτια</Link>
-      </div>
+      </>
     );
   }
 
-  return (
-    <div className="page">
-      <header className="topbar">
-        <Link to="/">Πίσω</Link>
-      </header>
+  // Το υπόλοιπο του συνδεδεμένου χρήστη, που είναι και το
+  // μόνο νούμερο που τον ενδιαφέρει πραγματικά.
+  const mine = balances.find((b) => b.id === user.id);
+  const myCents = mine ? mine.balanceCents : 0;
 
+  // Η μία εξόφληση που τον αφορά, αν υπάρχει.
+  const myTransfer = transfers.find(
+    (t) => t.fromUserId === user.id || t.toUserId === user.id
+  );
+
+  return (
+    <>
       <h1>{group.name}</h1>
 
-      <p className="muted">{group.members.map((m) => m.name).join(", ")}</p>
+      <div className="avatar-row" style={{ marginTop: "0.6rem" }}>
+        {group.members.map((m) => (
+          <Avatar key={m.id} id={m.id} name={m.name} small />
+        ))}
+        <span className="muted">
+          {group.members.length === 1
+            ? "1 άτομο"
+            : `${group.members.length} άτομα`}
+        </span>
+      </div>
+
+      {/* Ο ήρωας της οθόνης. Απαντάει στη μόνη ερώτηση με
+          την οποία ανοίγει κανείς την εφαρμογή. */}
+      <div className="hero">
+        <div className="hero-label">
+          {myCents === 0
+            ? "Η κατάστασή σου"
+            : myCents > 0
+              ? "Σου χρωστάνε"
+              : "Χρωστάς"}
+        </div>
+
+        <div
+          className={
+            myCents === 0
+              ? "hero-value"
+              : myCents > 0
+                ? "hero-value positive"
+                : "hero-value negative"
+          }
+        >
+          {myCents === 0 ? "Είσαι στα ίσια" : formatEuro(Math.abs(myCents))}
+        </div>
+
+        {myTransfer && (
+          <p className="hero-note">
+            {myTransfer.fromUserId === user.id
+              ? `Δώσε ${formatEuro(myTransfer.amountCents)} στον ${myTransfer.toName}.`
+              : `Ο ${myTransfer.fromName} σου δίνει ${formatEuro(myTransfer.amountCents)}.`}
+          </p>
+        )}
+      </div>
 
       <Balances
         groupId={groupId}
@@ -81,51 +131,97 @@ export default function GroupDetail() {
         onSettled={load}
       />
 
-      <h2>Έξοδα</h2>
+      <div className="section-title">
+        <span>Έξοδα</span>
 
-      <ExpenseForm
-        groupId={groupId}
-        members={group.members}
-        currentUserId={user.id}
-        onCreated={load}
-      />
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => setShowForm(!showForm)}
+        >
+          {showForm ? "Άκυρο" : "Νέο έξοδο"}
+        </button>
+      </div>
 
-      {expenses.length === 0 && (
-        <p className="muted">Δεν υπάρχουν έξοδα ακόμα.</p>
+      {showForm && (
+        <div style={{ marginBottom: "0.7rem" }}>
+          <ExpenseForm
+            groupId={groupId}
+            members={group.members}
+            currentUserId={user.id}
+            onCreated={async () => {
+              await load();
+              setShowForm(false);
+            }}
+          />
+        </div>
       )}
 
-      <ul className="card-list">
-        {expenses.map((expense) => (
-          <li key={expense.id} className="card">
-            <div className="row">
-              <strong>{expense.description}</strong>
-              <span>
-                {expense.isPending
-                  ? "εκκρεμεί"
-                  : formatEuro(expense.amountCents)}
-              </span>
-            </div>
+      {expenses.length === 0 ? (
+        <div className="empty">
+          Κανένα έξοδο ακόμα. Καταχώρησε το πρώτο για να αρχίσουν οι
+          υπολογισμοί.
+        </div>
+      ) : (
+        <ul className="list">
+          {expenses.map((expense) => (
+            <li key={expense.id} className="list-item">
+              <div className="row">
+                <span className="avatar-row">
+                  <Avatar
+                    id={expense.paidBy.id}
+                    name={expense.paidBy.name}
+                    small
+                  />
+                  <strong>{expense.description}</strong>
+                </span>
 
-            <span className="muted">
-              {formatDate(expense.date)} · πλήρωσε {expense.paidBy.name}
-            </span>
+                {expense.isPending ? (
+                  <span className="tag tag-pending">εκκρεμεί</span>
+                ) : (
+                  <span className="amount">
+                    {formatEuro(expense.amountCents)}
+                  </span>
+                )}
+              </div>
 
-            {!expense.isPending && (
               <span className="muted">
-                {expense.shares
-                  .map((s) => `${s.name}: ${formatEuro(s.amountCents)}`)
-                  .join(" · ")}
+                {formatDate(expense.date)} · πλήρωσε {expense.paidBy.name}
+                {!expense.isPending &&
+                  ` · ${expense.shares.length === group.members.length ? "όλοι" : expense.shares.map((s) => s.name).join(", ")}`}
               </span>
-            )}
-          </li>
-        ))}
-      </ul>
-            <RecurringSection
-        groupId={groupId}
-        members={group.members}
-        currentUserId={user.id}
-        onChanged={load}
-      />
-    </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Τα πάγια και οι προσκλήσεις είναι ρυθμίσεις, όχι
+          καθημερινή χρήση. Μπαίνουν πίσω από ένα κλικ, ώστε
+          η κύρια οθόνη να μένει καθαρή. */}
+      <div className="section-title">
+        <span>Ρυθμίσεις σπιτιού</span>
+
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => setShowMore(!showMore)}
+        >
+          {showMore ? "Απόκρυψη" : "Εμφάνιση"}
+        </button>
+      </div>
+
+      {showMore && (
+        <>
+          <InviteBox groupId={groupId} />
+
+          <RecurringSection
+            groupId={groupId}
+            members={group.members}
+            currentUserId={user.id}
+            onChanged={load}
+          />
+        </>
+      )}
+    </>
   );
 }

@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 
 function messageFor(error) {
   if (error?.body?.error === "email_taken") {
-    return "Υπάρχει ήδη λογαριασμός με αυτό το email.";
+    return "Αυτό το email χρησιμοποιείται ήδη. Δοκίμασε σύνδεση.";
   }
 
   if (error?.body?.error === "validation_error") {
@@ -13,7 +13,7 @@ function messageFor(error) {
     return first?.message ?? "Έλεγξε τα στοιχεία που έδωσες.";
   }
 
-  return "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+  return "Ο λογαριασμός δεν δημιουργήθηκε. Δοκίμασε ξανά.";
 }
 
 export default function Register() {
@@ -44,51 +44,55 @@ export default function Register() {
 
   return (
     <div className="auth-page">
-      <h1>Εγγραφή</h1>
+      <p className="auth-brand">Roomsplit</p>
 
-      <form onSubmit={handleSubmit}>
-        <label>
-          Όνομα
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            autoComplete="name"
-          />
-        </label>
+      <div className="auth-card">
+        <h1>Νέος λογαριασμός</h1>
 
-        <label>
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
-        </label>
+        <form onSubmit={handleSubmit}>
+          <label>
+            Όνομα
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              autoComplete="name"
+            />
+          </label>
 
-        <label>
-          Κωδικός
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            autoComplete="new-password"
-          />
-        </label>
+          <label>
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </label>
 
-        {error && <p className="error">{error}</p>}
+          <label>
+            Κωδικός, τουλάχιστον 8 χαρακτήρες
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+            />
+          </label>
 
-        <button type="submit" disabled={busy}>
-          {busy ? "Δημιουργία..." : "Δημιουργία λογαριασμού"}
-        </button>
-      </form>
+          {error && <p className="error">{error}</p>}
 
-      <p>
+          <button type="submit" disabled={busy}>
+            {busy ? "Δημιουργία..." : "Δημιουργία λογαριασμού"}
+          </button>
+        </form>
+      </div>
+
+      <p className="auth-foot">
         Έχεις ήδη λογαριασμό; <Link to="/login">Σύνδεση</Link>
       </p>
     </div>

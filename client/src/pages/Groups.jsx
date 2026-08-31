@@ -1,27 +1,29 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { Link } from "react-router-dom";
+import Avatar from "../components/Avatar.jsx";
 
 export default function Groups() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Η φόρμα ξεκινάει κλειστή. Ο κύριος σκοπός της οθόνης
+  // είναι να μπεις σε ένα σπίτι, όχι να φτιάξεις καινούργιο.
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // Φορτώνει τη λίστα. Την ορίζουμε ξεχωριστά ώστε να
-  // μπορούμε να την ξανακαλέσουμε μετά τη δημιουργία.
   async function load() {
     try {
       const data = await apiFetch("/api/groups");
       setGroups(data.groups);
       setError(null);
     } catch {
-      setError("Δεν μπόρεσα να φορτώσω τα σπίτια σου.");
+      setError("Η λίστα δεν φορτώθηκε. Ανανέωσε τη σελίδα.");
     } finally {
       setLoading(false);
     }
@@ -37,73 +39,95 @@ export default function Groups() {
     setCreating(true);
 
     try {
-      await apiFetch("/api/groups", {
-        method: "POST",
-        body: { name },
-      });
+      await apiFetch("/api/groups", { method: "POST", body: { name } });
 
-      // Καθαρίζουμε το πεδίο και ξαναφορτώνουμε, ώστε ο
-      // μετρητής μελών να έρθει από τον server και να μη
-      // μαντεύουμε εμείς τι έγραψε η βάση.
       setName("");
+      setOpen(false);
       await load();
     } catch {
-      setError("Δεν μπόρεσα να δημιουργήσω το σπίτι.");
+      setError("Το σπίτι δεν δημιουργήθηκε. Δοκίμασε ξανά.");
     } finally {
       setCreating(false);
     }
   }
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <span>{user.name}</span>
-        <button className="link-button" onClick={logout}>
-          Αποσύνδεση
-        </button>
-      </header>
+    <>
+      <h1>Γεια σου, {user.name.split(" ")[0]}</h1>
+      <p className="muted">Διάλεξε σπίτι για να δεις τα έξοδα και τα υπόλοιπα.</p>
 
-      <h1>Τα σπίτια μου</h1>
+      <div className="section-title">
+        <span>Σπίτια</span>
 
-      <form onSubmit={handleCreate} className="inline-form">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Όνομα σπιτιού"
-          required
-          maxLength={60}
-        />
-        <button type="submit" disabled={creating || name.trim() === ""}>
-          {creating ? "..." : "Δημιουργία"}
+        <button type="button" className="ghost" onClick={() => setOpen(!open)}>
+          {open ? "Άκυρο" : "Νέο σπίτι"}
         </button>
-      </form>
+      </div>
+
+      {open && (
+        <div className="panel" style={{ marginBottom: "0.7rem" }}>
+          <form onSubmit={handleCreate}>
+            <label>
+              Όνομα σπιτιού
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="π.χ. Εγνατία 120"
+                required
+                maxLength={60}
+                autoFocus
+              />
+            </label>
+
+            <button type="submit" disabled={creating || name.trim() === ""}>
+              {creating ? "Δημιουργία..." : "Δημιουργία σπιτιού"}
+            </button>
+          </form>
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 
-      {loading && <p>Φόρτωση...</p>}
+      {loading && <p className="muted">Φόρτωση...</p>}
 
-      {/* Τρεις καταστάσεις: φόρτωση, κενό, λίστα. Η κενή
-          κατάσταση είναι σημαντική, γιατί χωρίς αυτήν ο
-          νέος χρήστης βλέπει άδεια οθόνη και δεν ξέρει
-          τι να κάνει. */}
+      {/* Η κενή οθόνη είναι πρόσκληση για δράση, όχι
+          ανακοίνωση ότι δεν υπάρχει τίποτα. */}
       {!loading && groups.length === 0 && (
-        <p>Δεν έχεις σπίτια ακόμα. Φτιάξε το πρώτο σου παραπάνω.</p>
+        <div className="empty">
+          Δεν είσαι σε κανένα σπίτι ακόμα.
+          <br />
+          Φτιάξε ένα ή ζήτησε από τον συγκάτοικό σου σύνδεσμο πρόσκλησης.
+        </div>
       )}
 
-      <ul className="card-list">
-        {groups.map((group) => (
-                    <li key={group.id}>
-            <Link to={`/groups/${group.id}`} className="card card-link">
-              <strong>{group.name}</strong>
-              <span className="muted">
-                {group.memberCount} μέλη
-                {group.role === "OWNER" ? " · διαχειριστής" : ""}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+      {groups.length > 0 && (
+        <ul className="list">
+          {groups.map((group) => (
+            <li key={group.id}>
+              <Link to={`/groups/${group.id}`} className="list-link">
+                <Avatar id={group.id} name={group.name} />
+
+                <span className="grow">
+                  <strong>{group.name}</strong>
+                  <br />
+                  <span className="muted">
+                    {group.memberCount === 1
+                      ? "1 άτομο"
+                      : `${group.memberCount} άτομα`}
+                  </span>
+                </span>
+
+                {group.role === "OWNER" && (
+                  <span className="tag tag-owner">δικό σου</span>
+                )}
+
+                <span className="chevron">›</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }

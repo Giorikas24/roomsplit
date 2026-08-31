@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api.js";
 import { formatEuro, euroToCents } from "../lib/format.js";
+import Avatar from "./Avatar.jsx";
 
 export default function RecurringSection({ groupId, members, currentUserId, onChanged }) {
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [open, setOpen] = useState(false);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [dayOfMonth, setDayOfMonth] = useState(1);
@@ -20,7 +22,7 @@ export default function RecurringSection({ groupId, members, currentUserId, onCh
       const data = await apiFetch(`/api/groups/${groupId}/recurring`);
       setRules(data.rules);
     } catch {
-      setError("Δεν μπόρεσα να φορτώσω τα πάγια.");
+      setError("Τα πάγια δεν φορτώθηκαν.");
     } finally {
       setLoading(false);
     }
@@ -42,16 +44,17 @@ export default function RecurringSection({ groupId, members, currentUserId, onCh
     event.preventDefault();
 
     // Κενό ποσό σημαίνει μεταβλητό, π.χ. ρεύμα. Στέλνουμε
-    // null και ο server θα φτιάχνει εκκρεμή έξοδα.
-    const amountCents = amount.trim() === "" ? null : euroToCents(amount);
+    // null και ο server φτιάχνει εκκρεμή έξοδα προς
+    // συμπλήρωση.
+    const cents = amount.trim() === "" ? null : euroToCents(amount);
 
-    if (amountCents !== null && (amountCents === null || amountCents <= 0)) {
-      setError("Δώσε έγκυρο ποσό ή άφησέ το κενό.");
+    if (cents !== null && cents <= 0) {
+      setError("Γράψε ποσό μεγαλύτερο από μηδέν ή άφησε το πεδίο κενό.");
       return;
     }
 
     if (participantIds.length === 0) {
-      setError("Διάλεξε τουλάχιστον έναν συμμετέχοντα.");
+      setError("Διάλεξε ποιοι μοιράζονται το πάγιο.");
       return;
     }
 
@@ -63,7 +66,7 @@ export default function RecurringSection({ groupId, members, currentUserId, onCh
         method: "POST",
         body: {
           description,
-          amountCents,
+          amountCents: cents,
           dayOfMonth: Number(dayOfMonth),
           paidById,
           participantIds,
@@ -72,11 +75,12 @@ export default function RecurringSection({ groupId, members, currentUserId, onCh
 
       setDescription("");
       setAmount("");
+      setOpen(false);
 
       await load();
       await onChanged();
     } catch {
-      setError("Δεν μπόρεσα να δημιουργήσω τον κανόνα.");
+      setError("Το πάγιο δεν δημιουργήθηκε. Δοκίμασε ξανά.");
     } finally {
       setBusy(false);
     }
@@ -90,92 +94,105 @@ export default function RecurringSection({ groupId, members, currentUserId, onCh
 
       await load();
     } catch {
-      setError("Δεν μπόρεσα να σταματήσω τον κανόνα.");
+      setError("Το πάγιο δεν σταμάτησε. Δοκίμασε ξανά.");
     }
   }
 
-  // Δείχνουμε μόνο τους ενεργούς. Οι σταματημένοι μένουν
-  // στη βάση για το ιστορικό, αλλά δεν γεμίζουν την οθόνη.
+  // Δείχνουμε μόνο τα ενεργά. Τα σταματημένα μένουν στη
+  // βάση για το ιστορικό, χωρίς να γεμίζουν την οθόνη.
   const active = rules.filter((r) => r.active);
 
   return (
-    <>
-      <h2>Πάγια έξοδα</h2>
+    <div className="panel">
+      <div className="row">
+        <strong>Πάγια έξοδα</strong>
 
-      <p className="muted">
-        Δημιουργούνται αυτόματα κάθε μήνα. Αν αφήσεις το ποσό κενό,
-        θα εμφανίζεται ως εκκρεμές για να το συμπληρώσεις.
+        <button type="button" className="ghost" onClick={() => setOpen(!open)}>
+          {open ? "Άκυρο" : "Νέο πάγιο"}
+        </button>
+      </div>
+
+      <p className="muted" style={{ margin: "0.3rem 0 0.9rem" }}>
+        Δημιουργούνται αυτόματα κάθε μήνα. Άφησε το ποσό κενό για
+        λογαριασμούς που αλλάζουν, όπως το ρεύμα.
       </p>
 
-      <form onSubmit={handleSubmit} className="expense-form">
-        <label>
-          Περιγραφή
-          <input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            required
-            maxLength={120}
-          />
-        </label>
-
-        <div className="row">
+      {open && (
+        <form onSubmit={handleSubmit} style={{ marginBottom: "1rem" }}>
           <label>
-            Ποσό σε ευρώ, προαιρετικό
+            Τι είναι
             <input
               type="text"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="π.χ. 30,00"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="π.χ. ίντερνετ"
+              required
+              maxLength={120}
+              autoFocus
             />
           </label>
+
+          <div className="row-fields">
+            <label>
+              Ποσό, προαιρετικό
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="30,00"
+              />
+            </label>
+
+            <label>
+              Ημέρα μήνα
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={dayOfMonth}
+                onChange={(e) => setDayOfMonth(e.target.value)}
+                required
+              />
+            </label>
+          </div>
 
           <label>
-            Ημέρα του μήνα
-            <input
-              type="number"
-              min={1}
-              max={31}
-              value={dayOfMonth}
-              onChange={(e) => setDayOfMonth(e.target.value)}
-              required
-            />
+            Ποιος πληρώνει
+            <select value={paidById} onChange={(e) => setPaidById(e.target.value)}>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
           </label>
-        </div>
 
-        <label>
-          Πληρώνει
-          <select value={paidById} onChange={(e) => setPaidById(e.target.value)}>
+          <fieldset>
+            <legend>Μοιράζεται σε</legend>
+
             {members.map((m) => (
-              <option key={m.id} value={m.id}>
+              <label
+                key={m.id}
+                className={participantIds.includes(m.id) ? "chip on" : "chip"}
+              >
+                <input
+                  type="checkbox"
+                  checked={participantIds.includes(m.id)}
+                  onChange={() => toggleParticipant(m.id)}
+                />
                 {m.name}
-              </option>
+              </label>
             ))}
-          </select>
-        </label>
+          </fieldset>
 
-        <fieldset>
-          <legend>Μοιράζεται σε</legend>
+          {error && <p className="error">{error}</p>}
 
-          {members.map((m) => (
-            <label key={m.id} className="checkbox">
-              <input
-                type="checkbox"
-                checked={participantIds.includes(m.id)}
-                onChange={() => toggleParticipant(m.id)}
-              />
-              {m.name}
-            </label>
-          ))}
-        </fieldset>
-
-        {error && <p className="error">{error}</p>}
-
-        <button type="submit" disabled={busy}>
-          {busy ? "Δημιουργία..." : "Προσθήκη πάγιου"}
-        </button>
-      </form>
+          <button type="submit" disabled={busy}>
+            {busy ? "Δημιουργία..." : "Προσθήκη πάγιου"}
+          </button>
+        </form>
+      )}
 
       {loading && <p className="muted">Φόρτωση...</p>}
 
@@ -183,28 +200,40 @@ export default function RecurringSection({ groupId, members, currentUserId, onCh
         <p className="muted">Δεν έχεις πάγια έξοδα.</p>
       )}
 
-      <ul className="card-list">
-        {active.map((rule) => (
-          <li key={rule.id} className="card">
-            <div className="row">
-              <strong>{rule.description}</strong>
-              <span>
-                {rule.amountCents === null
-                  ? "μεταβλητό"
-                  : formatEuro(rule.amountCents)}
-              </span>
-            </div>
+      {active.length > 0 && (
+        <ul className="list">
+          {active.map((rule) => (
+            <li key={rule.id} className="list-item">
+              <div className="row">
+                <span className="avatar-row">
+                  <Avatar id={rule.paidBy.id} name={rule.paidBy.name} small />
+                  <strong>{rule.description}</strong>
+                </span>
 
-            <span className="muted">
-              κάθε {rule.dayOfMonth} του μήνα · πληρώνει {rule.paidBy.name}
-            </span>
+                {rule.amountCents === null ? (
+                  <span className="tag tag-pending">μεταβλητό</span>
+                ) : (
+                  <span className="amount">{formatEuro(rule.amountCents)}</span>
+                )}
+              </div>
 
-            <button type="button" onClick={() => deactivate(rule.id)}>
-              Σταμάτημα
-            </button>
-          </li>
-        ))}
-      </ul>
-    </>
+              <div className="row">
+                <span className="muted">
+                  κάθε {rule.dayOfMonth} του μήνα · πληρώνει {rule.paidBy.name}
+                </span>
+
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => deactivate(rule.id)}
+                >
+                  Σταμάτημα
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
