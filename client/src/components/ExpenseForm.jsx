@@ -2,15 +2,54 @@ import { useState } from "react";
 import { apiFetch } from "../lib/api.js";
 import { euroToCents, todayIso } from "../lib/format.js";
 
-export default function ExpenseForm({ groupId, members, currentUserId, onCreated }) {
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayIso());
-  const [paidById, setPaidById] = useState(currentUserId);
-  const [participantIds, setParticipantIds] = useState(members.map((m) => m.id));
+export default function ExpenseForm({
+  groupId,
+  members,
+  currentUserId,
+  onSaved,
+  // Αν δοθεί, η φόρμα επεξεργάζεται αυτό το έξοδο αντί
+  // να δημιουργεί καινούργιο.
+  expense = null,
+  onCancel = null,
+}) {
+  const editing = expense !== null;
+
+  const [description, setDescription] = useState(
+    editing ? expense.description : ""
+  );
+
+  // Στα εκκρεμή το ποσό είναι μηδέν και δεν έχει νόημα να
+  // το δείξουμε. Αφήνουμε το πεδίο κενό ώστε ο χρήστης να
+  // γράψει το πραγματικό.
+  const [amount, setAmount] = useState(
+    editing && !expense.isPending
+      ? (expense.amountCents / 100).toFixed(2).replace(".", ",")
+      : ""
+  );
+
+  const [date, setDate] = useState(
+    editing ? expense.date.slice(0, 10) : todayIso()
+  );
+
+  const [paidById, setPaidById] = useState(
+    editing ? expense.paidBy.id : currentUserId
+  );
+
+  // Τα εκκρεμή δεν έχουν shares, οπότε πέφτουμε πίσω σε
+  // όλους τους συγκατοίκους.
+  const [participantIds, setParticipantIds] = useState(
+    editing && expense.shares.length > 0
+      ? expense.shares.map((s) => s.userId)
+      : members.map((m) => m.id)
+  );
 
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  // Δεύτερο πάτημα για επιβεβαίωση διαγραφής. Προτιμάμε
+  // αυτό από το παράθυρο του browser, που είναι άσχημο
+  // και μπλοκάρει τη σελίδα.
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   function toggleParticipant(id) {
     setParticipantIds((current) =>
@@ -20,9 +59,6 @@ export default function ExpenseForm({ groupId, members, currentUserId, onCreated
     );
   }
 
-  // Ζωντανή προεπισκόπηση του μοιράσματος. Ο χρήστης
-  // βλέπει τι θα χρεωθεί ο καθένας πριν πατήσει, χωρίς
-  // να χρειάζεται να το υπολογίσει στο μυαλό του.
   const cents = euroToCents(amount);
   const perPerson =
     cents && cents > 0 && participantIds.length > 0
@@ -46,27 +82,57 @@ export default function ExpenseForm({ groupId, members, currentUserId, onCreated
     setBusy(true);
 
     try {
-      await apiFetch(`/api/groups/${groupId}/expenses`, {
-        method: "POST",
-        body: {
-          description,
-          amountCents: cents,
-          date,
-          paidById,
-          participantIds,
-        },
+      // Ίδιο σώμα και στις δύο περιπτώσεις. Αλλάζει μόνο
+      // η μέθοδος και η διεύθυνση.
+      const body = {
+        description,
+        amountCents: cents,
+        date,
+        paidById,
+        participantIds,
+      };
+
+      if (editing) {
+        await apiFetch(`/api/groups/${groupId}/expenses/${expense.id}`, {
+          method: "PUT",
+          body,
+        });
+      } else {
+        await apiFetch(`/api/groups/${groupId}/expenses`, {
+          method: "POST",
+          body,
+        });
+
+        // Μόνο στη δημιουργία καθαρίζουμε, γιατί συνήθως
+        // καταχωρείς πολλά έξοδα στη σειρά.
+        setDescription("");
+        setAmount("");
+      }
+
+      await onSaved();
+    } catch {
+      setError("Δεν αποθηκεύτηκε. Δοκίμασε ξανά.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      await apiFetch(`/api/groups/${groupId}/expenses/${expense.id}`, {
+        method: "DELETE",
       });
 
-      // Καθαρίζουμε μόνο όσα αλλάζουν σε κάθε έξοδο. Η
-      // ημερομηνία και οι συμμετέχοντες μένουν, γιατί
-      // συνήθως καταχωρείς πολλά στη σειρά.
-      setDescription("");
-      setAmount("");
-
-      await onCreated();
+      await onSaved();
     } catch {
-      setError("Το έξοδο δεν καταχωρήθηκε. Δοκίμασε ξανά.");
-    } finally {
+      setError("Η διαγραφή δεν έγινε. Δοκίμασε ξανά.");
       setBusy(false);
     }
   }
@@ -128,9 +194,7 @@ export default function ExpenseForm({ groupId, members, currentUserId, onCreated
           {members.map((m) => (
             <label
               key={m.id}
-              className={
-                participantIds.includes(m.id) ? "chip on" : "chip"
-              }
+              className={participantIds.includes(m.id) ? "chip on" : "chip"}
             >
               <input
                 type="checkbox"
@@ -158,8 +222,34 @@ export default function ExpenseForm({ groupId, members, currentUserId, onCreated
         {error && <p className="error">{error}</p>}
 
         <button type="submit" disabled={busy}>
-          {busy ? "Καταχώρηση..." : "Καταχώρηση εξόδου"}
+          {busy
+            ? "Αποθήκευση..."
+            : editing
+              ? "Αποθήκευση αλλαγών"
+              : "Καταχώρηση εξόδου"}
         </button>
+
+        {editing && (
+          <div className="row-fields">
+            <button
+              type="button"
+              className="secondary"
+              onClick={onCancel}
+              disabled={busy}
+            >
+              Άκυρο
+            </button>
+
+            <button
+              type="button"
+              className="secondary danger"
+              onClick={handleDelete}
+              disabled={busy}
+            >
+              {confirmDelete ? "Σίγουρα; Πάτα ξανά" : "Διαγραφή"}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

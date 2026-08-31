@@ -24,6 +24,11 @@ export default function GroupDetail() {
   const [showForm, setShowForm] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
+  // Ποιο έξοδο επεξεργαζόμαστε. Κρατάμε το id και όχι
+  // ολόκληρο το αντικείμενο, ώστε μετά από ανανέωση των
+  // δεδομένων η φόρμα να δείχνει τις φρέσκες τιμές.
+  const [editingId, setEditingId] = useState(null);
+
   async function load() {
     try {
       const [groupData, expensesData, balancesData, settleData] =
@@ -55,9 +60,8 @@ export default function GroupDetail() {
     load();
   }, [groupId]);
 
-  // Όταν κάποιος άλλος αλλάξει κάτι, ξαναζητάμε τα δεδομένα.
-  // Δεν περνάμε loading σε true, ώστε η ενημέρωση να γίνεται
-  // αθόρυβα και να μη χάνεται η θέση του χρήστη στη σελίδα.
+  // Όταν αλλάξει κάτι από άλλον συγκάτοικο, ξαναζητάμε τα
+  // δεδομένα αθόρυβα, χωρίς να χαθεί η θέση του χρήστη.
   useGroupEvents(groupId, load);
 
   if (loading) {
@@ -73,15 +77,14 @@ export default function GroupDetail() {
     );
   }
 
-  // Το υπόλοιπο του συνδεδεμένου χρήστη, που είναι και το
-  // μόνο νούμερο που τον ενδιαφέρει πραγματικά.
   const mine = balances.find((b) => b.id === user.id);
   const myCents = mine ? mine.balanceCents : 0;
 
-  // Η μία εξόφληση που τον αφορά, αν υπάρχει.
   const myTransfer = transfers.find(
     (t) => t.fromUserId === user.id || t.toUserId === user.id
   );
+
+  const editingExpense = expenses.find((e) => e.id === editingId) ?? null;
 
   return (
     <>
@@ -141,7 +144,12 @@ export default function GroupDetail() {
         <button
           type="button"
           className="ghost"
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            // Οι δύο φόρμες δεν πρέπει να είναι ανοιχτές
+            // ταυτόχρονα, γιατί μπερδεύεται ποια αποθηκεύει.
+            setEditingId(null);
+            setShowForm(!showForm);
+          }}
         >
           {showForm ? "Άκυρο" : "Νέο έξοδο"}
         </button>
@@ -153,7 +161,7 @@ export default function GroupDetail() {
             groupId={groupId}
             members={group.members}
             currentUserId={user.id}
-            onCreated={async () => {
+            onSaved={async () => {
               await load();
               setShowForm(false);
             }}
@@ -170,30 +178,62 @@ export default function GroupDetail() {
         <ul className="list">
           {expenses.map((expense) => (
             <li key={expense.id} className="list-item">
-              <div className="row">
-                <span className="avatar-row">
-                  <Avatar
-                    id={expense.paidBy.id}
-                    name={expense.paidBy.name}
-                    small
-                  />
-                  <strong>{expense.description}</strong>
-                </span>
+              {editingId === expense.id ? (
+                // Η φόρμα αντικαθιστά τη γραμμή, αντί να
+                // ανοίγει σε παράθυρο. Έτσι ο χρήστης βλέπει
+                // πού ακριβώς επεμβαίνει.
+                <ExpenseForm
+                  groupId={groupId}
+                  members={group.members}
+                  currentUserId={user.id}
+                  expense={editingExpense}
+                  onCancel={() => setEditingId(null)}
+                  onSaved={async () => {
+                    await load();
+                    setEditingId(null);
+                  }}
+                />
+              ) : (
+                <>
+                  <div className="row">
+                    <span className="avatar-row">
+                      <Avatar
+                        id={expense.paidBy.id}
+                        name={expense.paidBy.name}
+                        small
+                      />
+                      <strong>{expense.description}</strong>
+                    </span>
 
-                {expense.isPending ? (
-                  <span className="tag tag-pending">εκκρεμεί</span>
-                ) : (
-                  <span className="amount">
-                    {formatEuro(expense.amountCents)}
+                    <span className="avatar-row">
+                      {expense.isPending ? (
+                        <span className="tag tag-pending">εκκρεμεί</span>
+                      ) : (
+                        <span className="amount">
+                          {formatEuro(expense.amountCents)}
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        className="item-edit"
+                        onClick={() => {
+                          setShowForm(false);
+                          setEditingId(expense.id);
+                        }}
+                      >
+                        {expense.isPending ? "Συμπλήρωση" : "Αλλαγή"}
+                      </button>
+                    </span>
+                  </div>
+
+                  <span className="muted">
+                    {formatDate(expense.date)} · πλήρωσε {expense.paidBy.name}
+                    {!expense.isPending &&
+                      ` · ${expense.shares.length === group.members.length ? "όλοι" : expense.shares.map((s) => s.name).join(", ")}`}
                   </span>
-                )}
-              </div>
-
-              <span className="muted">
-                {formatDate(expense.date)} · πλήρωσε {expense.paidBy.name}
-                {!expense.isPending &&
-                  ` · ${expense.shares.length === group.members.length ? "όλοι" : expense.shares.map((s) => s.name).join(", ")}`}
-              </span>
+                </>
+              )}
             </li>
           ))}
         </ul>
