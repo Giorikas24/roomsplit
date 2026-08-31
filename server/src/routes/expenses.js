@@ -2,6 +2,7 @@ import express from "express";
 import { prisma } from "../lib/prisma.js";
 import { splitEqually } from "../lib/split.js";
 import { expenseSchema } from "../schemas/expense.js";
+import { publish } from "../lib/events.js";
 
 // Το mergeParams είναι κρίσιμο. Χωρίς αυτό ο router δεν
 // βλέπει το :groupId του γονικού router και το
@@ -116,6 +117,11 @@ router.post("/", async (req, res) => {
     select: expenseSelect,
   });
 
+  // Ειδοποιούμε όσους έχουν ανοιχτή τη σελίδα του σπιτιού.
+  // Μετά τη γραφή στη βάση, ώστε όταν ξαναζητήσουν δεδομένα
+  // να βρουν το νέο έξοδο ήδη εκεί.
+  publish(groupId, "expense");
+
   return res.status(201).json({ expense: toResponse(expense) });
 });
 
@@ -184,6 +190,8 @@ router.put("/:expenseId", async (req, res) => {
     }),
   ]);
 
+  publish(groupId, "expense");
+
   return res.json({ expense: toResponse(expense) });
 });
 
@@ -198,6 +206,8 @@ router.delete("/:expenseId", async (req, res) => {
   if (result.count === 0) {
     return res.status(404).json({ error: "expense_not_found" });
   }
+
+  publish(req.params.groupId, "expense");
 
   // Τα shares σβήνονται μόνα τους λόγω του onDelete Cascade.
   return res.status(204).end();

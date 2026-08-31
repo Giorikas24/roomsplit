@@ -8,13 +8,14 @@ import expensesRouter from "./expenses.js";
 import balancesRouter from "./balances.js";
 import settlementsRouter from "./settlements.js";
 import recurringRouter from "./recurring.js";
+import { publish } from "../lib/events.js";
 
 const router = express.Router();
 
 router.use(requireAuth);
 
-// Ολα τα expenses endpoints περνάνε πρώτα από τον έλεγχο
-// μέλους, οπότε δεν χρειάζεται να τον επαναλάβουμε μέσα.
+// Όλα τα παρακάτω περνάνε πρώτα από τον έλεγχο μέλους,
+// οπότε δεν χρειάζεται να τον επαναλάβουμε μέσα τους.
 router.use("/:groupId/expenses", requireMember, expensesRouter);
 router.use("/:groupId/balances", requireMember, balancesRouter);
 router.use("/:groupId/settlements", requireMember, settlementsRouter);
@@ -33,6 +34,9 @@ router.post("/", async (req, res) => {
     });
   }
 
+  // Nested create: φτιάχνει group και membership μαζί.
+  // Το Prisma τα τυλίγει σε ένα transaction, οπότε είναι
+  // αδύνατο να μείνει group χωρίς κανένα μέλος.
   const group = await prisma.group.create({
     data: {
       name: parsed.data.name,
@@ -47,6 +51,9 @@ router.post("/", async (req, res) => {
 });
 
 router.get("/", async (req, res) => {
+  // Ξεκινάμε από τα memberships και όχι από τα groups,
+  // γιατί έτσι το φιλτράρισμα ανά χρήστη γίνεται στη βάση
+  // και δεν φέρνουμε ποτέ ξένα δεδομένα στη μνήμη.
   const memberships = await prisma.groupMember.findMany({
     where: { userId: req.userId, leftAt: null },
     select: {
@@ -75,9 +82,6 @@ router.get("/", async (req, res) => {
   return res.json({ groups });
 });
 
-// Οι διαδρομές /join μπαίνουν πριν από την /:groupId.
-// Δεν συγκρούονται, γιατί έχουν διαφορετικό αριθμό
-// τμημάτων, αλλά η σειρά κάνει τον κώδικα πιο ξεκάθαρο.
 router.get("/join/:token", async (req, res) => {
   const invite = await prisma.invite.findUnique({
     where: { token: req.params.token },
@@ -145,6 +149,10 @@ router.post("/join/:token", async (req, res) => {
     select: { id: true, name: true, createdAt: true },
   });
 
+  // Ειδοποιούμε τους υπόλοιπους ότι μπήκε νέος συγκάτοικος,
+  // ώστε να τον δουν στη λίστα μελών χωρίς ανανέωση.
+  publish(invite.groupId, "members");
+
   return res.status(201).json({ group });
 });
 
@@ -190,8 +198,8 @@ router.post("/:groupId/invites", requireMember, async (req, res) => {
     data: {
       groupId: req.params.groupId,
       // 32 τυχαία bytes. Το base64url δίνει κείμενο που
-      // μπαίνει σε URL χωρίς να χρειάζεται μετατροπή,
-      // δηλαδή χωρίς +, / και =.
+      // μπαίνει σε URL χωρίς μετατροπή, δηλαδή χωρίς
+      // +, / και =.
       token: crypto.randomBytes(32).toString("base64url"),
       expiresAt: new Date(Date.now() + INVITE_TTL_MS),
     },

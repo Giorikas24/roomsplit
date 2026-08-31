@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api.js";
 import { formatEuro, formatDate } from "../lib/format.js";
+import { useGroupEvents } from "../lib/useGroupEvents.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import Avatar from "../components/Avatar.jsx";
 import ExpenseForm from "../components/ExpenseForm.jsx";
@@ -54,6 +55,11 @@ export default function GroupDetail() {
     load();
   }, [groupId]);
 
+  // Όταν κάποιος άλλος αλλάξει κάτι, ξαναζητάμε τα δεδομένα.
+  // Δεν περνάμε loading σε true, ώστε η ενημέρωση να γίνεται
+  // αθόρυβα και να μη χάνεται η θέση του χρήστη στη σελίδα.
+  useGroupEvents(groupId, load);
+
   if (loading) {
     return <p className="muted">Φόρτωση...</p>;
   }
@@ -92,8 +98,6 @@ export default function GroupDetail() {
         </span>
       </div>
 
-      {/* Ο ήρωας της οθόνης. Απαντάει στη μόνη ερώτηση με
-          την οποία ανοίγει κανείς την εφαρμογή. */}
       <div className="hero">
         <div className="hero-label">
           {myCents === 0
@@ -195,9 +199,6 @@ export default function GroupDetail() {
         </ul>
       )}
 
-      {/* Τα πάγια και οι προσκλήσεις είναι ρυθμίσεις, όχι
-          καθημερινή χρήση. Μπαίνουν πίσω από ένα κλικ, ώστε
-          η κύρια οθόνη να μένει καθαρή. */}
       <div className="section-title">
         <span>Ρυθμίσεις σπιτιού</span>
 

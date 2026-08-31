@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { computeBalances } from "../lib/balances.js";
 import { simplifyDebts } from "../lib/settle.js";
 import { settlementSchema } from "../schemas/settlement.js";
+import { publish } from "../lib/events.js";
 
 const router = express.Router({ mergeParams: true });
 
@@ -77,6 +78,8 @@ router.post("/", async (req, res) => {
     },
   });
 
+  publish(groupId, "settlement");
+
   return res.status(201).json({ settlement });
 });
 
@@ -89,6 +92,8 @@ router.delete("/:settlementId", async (req, res) => {
   if (result.count === 0) {
     return res.status(404).json({ error: "settlement_not_found" });
   }
+
+  publish(req.params.groupId, "settlement");
 
   return res.status(204).end();
 });

@@ -1,6 +1,7 @@
 import express from "express";
 import { prisma } from "../lib/prisma.js";
 import { recurringSchema } from "../schemas/recurring.js";
+import { publish } from "../lib/events.js";
 
 const router = express.Router({ mergeParams: true });
 
@@ -106,6 +107,8 @@ router.post("/", async (req, res) => {
     select: ruleSelect,
   });
 
+  publish(groupId, "recurring");
+
   return res.status(201).json({ rule: toResponse(rule) });
 });
 
@@ -121,6 +124,8 @@ router.patch("/:ruleId/deactivate", async (req, res) => {
   if (result.count === 0) {
     return res.status(404).json({ error: "rule_not_found" });
   }
+
+  publish(req.params.groupId, "recurring");
 
   return res.status(204).end();
 });

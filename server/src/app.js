@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import { prisma } from "./lib/prisma.js";
 import authRouter from "./routes/auth.js";
 import groupsRouter from "./routes/groups.js";
+import eventsRouter from "./routes/events.js";
 
 export function createApp() {
   const app = express();
@@ -10,7 +11,7 @@ export function createApp() {
   app.use(express.json());
 
   // Διαβάζει τα cookies και τα βάζει στο req.cookies.
-  // Το χρειαζόμαστε για το refresh token στο επόμενο βήμα.
+  // Το χρειαζόμαστε για το refresh token.
   app.use(cookieParser());
 
   app.get("/api/health", (req, res) => {
@@ -29,6 +30,13 @@ export function createApp() {
   // Όλες οι διαδρομές του authRouter κρεμάνε κάτω από αυτό
   // το πρόθεμα. Το /register γίνεται /api/auth/register.
   app.use("/api/auth", authRouter);
+
+  // Μπαίνει πριν από τον groupsRouter, γιατί εκείνος ξεκινάει
+  // με requireAuth και θα απαιτούσε Authorization header, τον
+  // οποίο το EventSource του browser δεν μπορεί να στείλει.
+  // Ο έλεγχος εδώ γίνεται με εισιτήριο, μέσα στον eventsRouter.
+  app.use("/api/groups/:groupId/events", eventsRouter);
+
   app.use("/api/groups", groupsRouter);
 
   // Τελευταίο middleware, με τέσσερα ορίσματα. Ο express

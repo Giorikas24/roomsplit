@@ -1,7 +1,12 @@
 import express from "express";
 import { prisma } from "../lib/prisma.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/tokens.js";
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  signStreamTicket,
+} from "../lib/tokens.js";
 import { registerSchema, loginSchema } from "../schemas/auth.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 
@@ -9,20 +14,11 @@ const router = express.Router();
 
 const REFRESH_COOKIE = "refreshToken";
 
-// Ρυθμίσεις του cookie που κρατάει το refresh token.
 const refreshCookieOptions = {
-  // Το httpOnly το κρύβει από τη JavaScript του browser.
-  // Είναι η βασική άμυνα: ακόμα κι αν κάποιος καταφέρει να
-  // τρέξει κώδικα στη σελίδα, δεν μπορεί να το διαβάσει.
   httpOnly: true,
-  // Σε production στέλνεται μόνο μέσω https.
   secure: process.env.NODE_ENV === "production",
-  // Το lax εμποδίζει να σταλεί το cookie από άλλο site,
-  // που είναι η άμυνα απέναντι σε επιθέσεις CSRF.
   sameSite: "lax",
-  // Στέλνεται μόνο στα endpoints του auth, πουθενά αλλού.
   path: "/api/auth",
-  // Επτά μέρες σε χιλιοστά του δευτερολέπτου.
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
@@ -74,9 +70,9 @@ router.post("/login", async (req, res) => {
 
   const user = await prisma.user.findUnique({ where: { email } });
 
-  // Ίδια απάντηση και για ανύπαρκτο email και για λάθος
-  // κωδικό. Αν τα ξεχωρίζαμε, ο επιτιθέμενος θα μπορούσε
-  // να μάθει ποια emails έχουν λογαριασμό.
+  // Ίδια απάντηση για ανύπαρκτο email και για λάθος κωδικό.
+  // Αν τα ξεχωρίζαμε, κάποιος θα μπορούσε να μάθει ποια
+  // emails έχουν λογαριασμό.
   if (!user) {
     return res.status(401).json({ error: "invalid_credentials" });
   }
@@ -115,8 +111,8 @@ router.post("/refresh", async (req, res) => {
     return res.status(401).json({ error: "invalid_refresh_token" });
   }
 
-  // Ελέγχουμε ότι ο χρήστης υπάρχει ακόμα. Ένα token μένει
-  // έγκυρο επτά μέρες, οπότε ο λογαριασμός μπορεί να έχει
+  // Ελέγχουμε ότι ο χρήστης υπάρχει ακόμα. Ένα refresh token
+  // ζει επτά μέρες, οπότε ο λογαριασμός μπορεί να έχει
   // διαγραφεί στο μεταξύ.
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
@@ -127,9 +123,8 @@ router.post("/refresh", async (req, res) => {
     return res.status(401).json({ error: "invalid_refresh_token" });
   }
 
-  // Δίνουμε καινούργιο refresh cookie σε κάθε ανανέωση.
-  // Λέγεται rotation και περιορίζει τη ζημιά αν κάποιο
-  // παλιό token διαρρεύσει.
+  // Νέο cookie σε κάθε ανανέωση. Λέγεται rotation και
+  // περιορίζει τη ζημιά αν διαρρεύσει κάποιο παλιό.
   setRefreshCookie(res, user.id);
 
   return res.json({ user, accessToken: signAccessToken(user.id) });
@@ -153,6 +148,14 @@ router.get("/me", requireAuth, async (req, res) => {
   }
 
   return res.json({ user });
+});
+
+// Εισιτήριο για να ανοίξει ροή SSE. Ζητείται με κανονικό
+// αίτημα και Authorization header, οπότε η ταυτότητα
+// ελέγχεται όπως παντού. Ζει 60 δευτερόλεπτα και δεν
+// ανοίγει τίποτα άλλο εκτός από τη ροή.
+router.post("/stream-ticket", requireAuth, (req, res) => {
+  return res.json({ ticket: signStreamTicket(req.userId) });
 });
 
 export default router;
